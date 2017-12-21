@@ -1,0 +1,152 @@
+Pegasus v1.01
+
+Changes from v1.0 - modifed this README file to update contact information and to remove erroneous references to translocations from section V.
+
+Publication:
+Matthew Hayes, Jeremy Pearson, "A Method to Detect Large Deletions at Base Pair Level using Next-Generation Sequencing Data", International Symposium on Bioinformatics Research and Applications (ISBRA) 2016.  
+
+Contact:
+
+	* - Matthew Hayes
+	mhayes5@xula.edu
+
+	Jeremy Pearson
+	jpearso1@my.tnstate.edu
+
+	* - corresponding author
+
+Contents
+	I. Requirements
+	II. Installation
+	III. Associated programs
+	IV. Configuring Pegasus
+	V. Output format
+
+
+
+-----------------------------------------------------------------------
+Note: Much of the code (and this README) were recycled from the Bellerophon program published in 2013 by Matthew Hayes (primary developer) and Jing Li.
+
+I. Requirements
+
+	********NOTE: Pegasus currently can only analyze data produced with **Illumina** platforms (i.e. read pairs with forward-reverse orientation).************
+
+	Please make sure that chromosome names in the input BAM file are in the following format: chr1, chr2, chr3...
+
+	Pegasus has two external dependencies: Blat and SamTools. The link to each is provided here:
+
+	SamTools
+	http://samtools.sourceforge.net/
+	
+	Blat
+	http://hgdownload.cse.ucsc.edu/admin/exe/linux.x86_64/blat/
+	
+	***NOTE: Be sure to download the gfClient and gfServer programs. Pegasus uses the Blat server and not the Blat executable. This results in a considerable increase in speed.
+	
+
+------------------------------------------------------------------------
+
+II. Installation
+	
+	****Be sure to add the SamTools directory to your PATH variable****.
+
+	Once the dependencies have been installed and the files have been extracted, Pegasus can be executed with the following command:
+
+		perl pegasus.pl
+	
+
+------------------------------------------------------------------------
+III. Associated programs
+	
+	Pegasus includes several scripts that are used by main program. They are described here.
+
+	check_blat_config.pl
+		Parses the specified Blat config file if it exists. If the config file does not exist, it uses default values for the parameters.
+
+	est_mean_std.pl
+		Estimates mean and standard deviation of read pairs in the data. 
+		Only used if the user does not turn off the option to estimate mean and stdev from data.
+
+	preprocess.pl
+
+	This is the preprocessor. It extracts *only* discordant read pairs and soft-clipped reads from an input bam file, and it filters the discordant reads by alternative mapping quality (i.e. quality score of BOTH mates is >= some threshold). Unless your BAM file is already filtered by discordant reads and soft-clipped reads, then skipping this step is NOT recommended since it will result in a substantial increase in running time and disk usage.
+
+	pegasus_cluster.pl
+	
+		This program looks for discordant read clusters that can denote a possible deletion structural variant. It then looks for soft-clipped reads near these clusters and attempts to refine the breakpoints by mapping the clipped subreads with Blat.
+
+------------------------------------------------------------------------
+IV. Configuring Pegasus 
+
+	The program requires as input 1) The full path to a sorted, indexed BAM file, and 2) the path to a configuration file which stores parameters used by the Blat client program (gfClient).
+
+
+	A. 	BLAT SERVER CONFIGURATION
+
+		Before running Pegasus, you must first run the Blat server (gfServer) so that it can listen for queries. An example of running the server is:
+				gfServer start localhost 8000 human_build_36.2bit &
+		It is probably better to run the server in the background (hence the ampersand). 
+		This server will run on localhost and will listen for queries on port 8000. 
+		The reference fasta file must be converted to .2bit format from fasta format. The program faToTwoBit is part of the Blat package and can be downloaded from here:
+
+		http://hgdownload.cse.ucsc.edu/admin/exe/linux.x86_64/
+
+		Command line parameters for the Blat server must be set by the user unless default parameters will be used.
+
+	B.	BLAT CLIENT CONFIGURATION
+
+		Pegasus uses a configuration file to store information needed for the Blat client (gfClient).
+		
+		The Blat configuration file has the following format (the values are just examples):
+				blat_port=8000
+				blat_server=localhost
+				blat_path=/home/
+				minScore=20
+				minIdentity=90	
+		
+
+		The blat_port field contains the port on which the Blat server is listening. The blat_server field contains the server on which Blat is running.
+		blat_path provides a full path for the location of the gfClient program.
+		minScore and minIdentity are parameters used by the gfClient program. See the gfClient documentation for information on these parameters.
+
+	C. RUNNING PEGASUS
+
+Pegasus v1.0
+
+perl pegasus.pl --input_bam {indexed and sorted bam file} --blat_config {path to Blat config file} [OPTIONS]
+
+OPTIONS
+
+	--min_del				Minimum number of abnormally long forward-reverse read pairs in a cluster [4]
+	--min_soft_clipped			Minimum total soft-clipped reads from either side to predict precise breakpoints [3]
+	--max_soft_clipped			Cease breakpoint refinement procedure if number of processed soft-clipped reads exceeds this number [20]
+	--min_score				Minimum alternative mapping quality of chimeric read pairs (if preprocessing is skipped, then this is a threshold for individual read mapping quality) [30]
+	--min_clip_len				Minimum length of a soft-clipped read to trigger breakpoint refinement (NOTE: it is NOT recommended to choose a value less than 20) [20]
+	--ne					Do NOT estimate mean and standard deviation from data [unset]
+	--mean_pairs				Mean insert length (bp) of read pairs (only used if --ne is set) [400]
+	--std_pairs				Standard deviation of insert lengths of read pairs (only used if --ne is set) [80]	
+	--num_pairs				Number of pairs to estimate mean and standard deviation [10000]
+	--k					Standard deviation cutoff for determining discordant read pairs [4]
+	--skip_pre				Skip preprocess step (NOT recommended if BAM file is not filtered by 1) chimeric pairs with alt quality >= some threshold and 2) soft clipped reads) [do not skip]
+
+------------------------------------------------------------------------
+
+V. Output format
+
+	Upon completion, Pegasus generates the following five output files, where BAMFILE is the name of the input bam file:
+
+		BAMFILE.breakpoints.txt
+
+
+	A. Breakpoints file (BAMFILE.breakpoints.txt)
+
+			chrA - The chromosome on the chrA side of the boundary. Chr1 refers to the first chromosome of the variant, and NOT necessarily chromosome 1 of the genome.
+			posA - The chrA breakpoint
+			chrB - The chromosome on the downstream end of the deletion (should be the same as chrA)
+			posB - The chrB breakpoint
+			strand1 - The chrA strand (should be +)
+			strand2 - The chrB strand (should be +)
+			num_discordant - The number of discordant read pairs that support the variant
+			SC1 - The number of soft-clipped subreads that realign to the chrA side of the variant
+			SC2 - The number of soft-clipped subreads that realign to the chrB side of the variant
+		
